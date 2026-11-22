@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="pt-BR"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+<title>Quest UI</title>
+<style>
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;height:100%;overflow:hidden;background:#0b0d12;color:#fff;font-family:system-ui,sans-serif}
+#cam,#fx{position:fixed;inset:0;width:100%;height:100%;object-fit:cover}
+#cam{opacity:.55}#cam.mir{transform:scaleX(-1)}
+#fx{pointer-events:none;z-index:5}
+#start{position:fixed;inset:0;z-index:50;display:flex;align-items:center;justify-content:center;background:radial-gradient(circle at 50% 30%,#1c2540,#0b0d12)}
+.card{width:min(92vw,520px);padding:24px;border-radius:28px;background:rgba(255,255,255,.07);backdrop-filter:blur(20px);border:1px solid rgba(255,255,255,.12)}
+h1{margin:0 0 6px;font-size:22px}p{margin:0 0 14px;opacity:.7;font-size:14px}
+input{width:100%;padding:14px 16px;border-radius:16px;border:1px solid rgba(255,255,255,.2);background:rgba(0,0,0,.35);color:#fff;font-size:16px;outline:0}
+.btn{border:0;color:#fff;font-size:16px;font-weight:600;padding:13px 20px;border-radius:999px;background:rgba(255,255,255,.14);transition:.12s}
+.btn.hot{background:#3b82f6;transform:scale(1.08)}
+#go{width:100%;margin-top:14px;background:#2563eb}
+.win{position:fixed;z-index:10;border-radius:28px;background:rgba(18,22,32,.78);backdrop-filter:blur(24px);border:1px solid rgba(255,255,255,.16);box-shadow:0 20px 60px rgba(0,0,0,.5);overflow:hidden;animation:fl 6s ease-in-out infinite}
+@keyframes fl{50%{transform:translateY(-4px)}}
+.bar{height:44px;display:flex;align-items:center;justify-content:center;position:relative;cursor:grab;touch-action:none}
+.bar::before{content:"";width:64px;height:6px;border-radius:9px;background:rgba(255,255,255,.4)}
+.tools{position:absolute;right:8px;top:4px;display:flex;gap:6px}
+.btn.s{padding:0;width:36px;height:36px;font-size:14px}
+#menu{left:16px;top:12%;width:330px}
+#menu .row{display:flex;flex-wrap:wrap;gap:10px;padding:6px 16px 16px;justify-content:center}
+#menu .btn{flex:1 1 40%;min-width:130px}
+#st{text-align:center;font-size:12px;opacity:.6;padding-bottom:10px}
+#app{left:50%;top:14%;width:46%;height:56%;display:none;flex-direction:column}
+#app iframe{flex:1;border:0;width:100%;background:#000}
+.rs{position:absolute;z-index:3;touch-action:none;display:flex;align-items:center;justify-content:center}
+.rs::after{content:"";border-radius:9px;background:rgba(255,255,255,.55)}
+.rs[data-m=w]{right:0;top:48px;bottom:48px;width:30px}.rs[data-m=w]::after{width:6px;height:60%}
+.rs[data-m=h]{bottom:0;left:48px;right:48px;height:30px}.rs[data-m=h]::after{height:6px;width:60%}
+.rs[data-m=wh]{right:0;bottom:0;width:46px;height:46px}.rs[data-m=wh]::after{width:20px;height:20px;border-radius:6px}
+.rs.hot::after{background:#3b82f6}
+.cur{position:fixed;z-index:99;width:34px;height:34px;margin:-17px 0 0 -17px;border-radius:50%;border:3px solid #fff;pointer-events:none;display:none;transition:transform .08s,background .08s}
+.cur.p{background:rgba(59,130,246,.8);transform:scale(.6)}
+#c1{border-color:#fca5a5}#c0{border-color:#7dd3fc}
+</style></head><body>
+<video id="cam" playsinline muted autoplay></video><canvas id="fx"></canvas>
+
+<div id="start"><div class="card">
+<h1>Quest UI</h1><p>Cole um link do YouTube ou Google (ou digite uma busca) e toque em Iniciar.</p>
+<input id="url" placeholder="https://youtube.com/watch?v=..." autocomplete="off">
+<button class="btn" id="go">Iniciar</button></div></div>
+
+<div id="menu" class="win" style="display:none">
+<div class="bar drag"></div>
+<div class="row">
+<button class="btn" data-a="open">▶ Abrir aba</button>
+<button class="btn" data-a="close">✕ Fechar aba</button>
+<button class="btn" data-a="center">⌖ Recentralizar</button>
+<button class="btn" data-a="cam">⟳ Câmera</button>
+<button class="btn" data-a="flip">⇄ Espelhar</button>
+<button class="btn" data-a="exit">⏻ Sair</button>
+</div><div id="st">carregando mãos…</div></div>
+
+<div id="app" class="win"><div class="bar drag"><div class="tools">
+<button class="btn s" data-a="pp">⏯</button><button class="btn s" data-a="op">◐</button><button class="btn s" data-a="ext">↗</button><button class="btn s" data-a="close">✕</button></div></div>
+<iframe id="fr" allow="autoplay; encrypted-media; fullscreen" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe>
+<div class="rs" data-m="w"></div><div class="rs" data-m="h"></div><div class="rs" data-m="wh"></div></div>
+<div id="c0" class="cur"></div><div id="c1" class="cur"></div>
+
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4.1675469240/hands.js" crossorigin="anonymous"></script>
+<script>
+const $=id=>document.getElementById(id);
+const cam=$('cam'),fx=$('fx'),ctx=fx.getContext('2d'),st=$('st'),A=$('app'),M=$('menu'),OPS=[1,.8,.6],COL=['#7dd3fc','#fca5a5'];
+let link=localStorage.getItem('link')||'',facing='user',stream=null,running=false,hands=null,
+ flip=localStorage.getItem('flip')==='1',z=20,yt=false,playing=true,op=0,sc=null,pd=null;
+$('url').value=link;
+
+/* ---- link -> URL / embed ---- */
+function norm(s){s=s.trim();if(!s)return'';if(/^https?:\/\//i.test(s))return s;
+ if(!/\s/.test(s)&&/\.\w{2,}/.test(s))return'https://'+s;
+ return'https://www.google.com/search?q='+encodeURIComponent(s)}
+function ytEmbed(u){try{const x=new URL(u),h=x.hostname.replace('www.','').replace('m.',''),q='rel=0&playsinline=1&autoplay=1&enablejsapi=1';
+ let id=null;
+ if(h==='youtu.be')id=x.pathname.slice(1);
+ else if(h.endsWith('youtube.com')){
+  if(x.pathname==='/watch')id=x.searchParams.get('v');
+  else if(/^\/(shorts|embed|live)\//.test(x.pathname))id=x.pathname.split('/')[2];
+  else if(x.pathname==='/playlist'&&x.searchParams.get('list'))return'https://www.youtube.com/embed/videoseries?list='+x.searchParams.get('list')+'&'+q}
+ return id?'https://www.youtube.com/embed/'+id+'?'+q:null}catch(e){return null}}
+function embedUrl(u){const y=ytEmbed(u);if(y)return y;
+ try{const x=new URL(u);if(/(^|\.)google\.[a-z.]+$/.test(x.hostname)&&x.pathname==='/search'){x.searchParams.set('igu','1');return x.href}}catch(e){}
+ return u}
+function ext(u){const B=window.Capacitor&&Capacitor.Plugins&&Capacitor.Plugins.Browser;B?B.open({url:u}):window.open(u,'_blank')}
+
+/* ---- ações ---- */
+const act={
+ open(){const u=norm(link);if(!u){st.textContent='nenhum link definido';return}
+  yt=!!ytEmbed(u);playing=true;$('fr').src=embedUrl(u);A.style.display='flex';A.style.zIndex=++z},
+ close(){$('fr').src='about:blank';A.style.display='none'},
+ center(){M.style.left='16px';M.style.top='12%'},
+ cam(){facing=facing==='user'?'environment':'user';startCam()},
+ flip(){flip=!flip;localStorage.setItem('flip',flip?'1':'0');cam.classList.toggle('mir',flip)},
+ pp(){if(!yt)return;playing=!playing;$('fr').contentWindow.postMessage(JSON.stringify({event:'command',func:playing?'playVideo':'pauseVideo',args:''}),'*')},
+ op(){op=(op+1)%3;A.style.opacity=OPS[op]},
+ ext(){ext(norm(link))},
+ exit(){running=false;act.close();stopCam();M.style.display='none';$('start').style.display='flex';S.forEach(drop)}};
+document.addEventListener('click',e=>{const b=e.target.closest('[data-a]');if(b)act[b.dataset.a]()});
+$('go').onclick=async()=>{link=$('url').value;localStorage.setItem('link',link);
+ $('start').style.display='none';M.style.display='block';act.center();running=true;
+ await startCam();if(!hands)initHands();loop()};
+
+/* ---- câmera ---- */
+async function startCam(){stopCam();
+ try{stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:facing,width:640,height:480},audio:false});
+  cam.srcObject=stream;cam.classList.toggle('mir',flip);await cam.play()}
+ catch(e){st.textContent='sem câmera: '+e.message}}
+function stopCam(){stream&&stream.getTracks().forEach(t=>t.stop());stream=null}
+
+/* ---- MediaPipe Hands (2 mãos) ---- */
+function initHands(){
+ hands=new Hands({locateFile:f=>'https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4.1675469240/'+f});
+ hands.setOptions({maxNumHands:2,modelComplexity:0,minDetectionConfidence:.6,minTrackingConfidence:.5});
+ hands.onResults(onHand)}
+async function loop(){if(!running)return;
+ if(cam.readyState>=2&&hands){try{await hands.send({image:cam})}catch(e){}}
+ requestAnimationFrame(loop)}
+
+const S=[0,1].map(i=>({c:$('c'+i),on:false,x:0,y:0,p:false,drag:null,hot:null,lost:0}));
+const d=(a,b)=>Math.hypot(a.x-b.x,a.y-b.y);
+function map(p){const vw=cam.videoWidth||640,vh=cam.videoHeight||480,W=innerWidth,H=innerHeight,k=Math.max(W/vw,H/vh);
+ const nx=flip?1-p.x:p.x;return{x:nx*vw*k-(vw*k-W)/2,y:p.y*vh*k-(vh*k-H)/2}}
+
+function onHand(r){
+ if(fx.width!==innerWidth||fx.height!==innerHeight){fx.width=innerWidth;fx.height=innerHeight}
+ ctx.clearRect(0,0,fx.width,fx.height);
+ const pts=(r.multiHandLandmarks||[]).map(l=>{const a=map(l[4]),b=map(l[8]);return{l,x:(a.x+b.x)/2,y:(a.y+b.y)/2,r:d(l[4],l[8])/d(l[0],l[9])}}).sort((a,b)=>a.x-b.x);
+ const use=[null,null];
+ if(pts.length>=2){use[0]=pts[0];use[1]=pts[1]}
+ else if(pts.length===1){const p=pts[0];let i=0;
+  if(S[0].on&&S[1].on)i=d(p,S[1])<d(p,S[0])?1:0;else if(S[1].on)i=1;use[i]=p}
+ S.forEach((h,i)=>{const p=use[i];
+  if(!p){if(h.on&&++h.lost>6)drop(h);return}
+  ctx.fillStyle=COL[i];p.l.forEach(q=>{const m=map(q);ctx.beginPath();ctx.arc(m.x,m.y,3,0,7);ctx.fill()});
+  upd(h,p)});
+ st.textContent=pts.length?pts.length+' mão(s) · pinça = clicar/arrastar':'mostre as mãos';
+ twoHand()}
+
+function upd(h,p){
+ if(!h.on){h.on=true;h.x=p.x;h.y=p.y}
+ h.lost=0;h.x+=(p.x-h.x)*.45;h.y+=(p.y-h.y)*.45;
+ h.c.style.display='block';h.c.style.left=h.x+'px';h.c.style.top=h.y+'px';
+ if(!h.p&&p.r<.28){h.p=true;h.c.classList.add('p');press(h)}
+ else if(h.p&&p.r>.42)release(h);
+ if(h.drag)moveDrag(h.drag,h.x,h.y);else hover(h)}
+function release(h){h.p=false;h.drag=null;h.c.classList.remove('p')}
+function drop(h){h.on=false;h.lost=0;h.c.style.display='none';release(h);h.hot&&h.hot.classList.remove('hot');h.hot=null}
+function hover(h){const e=document.elementFromPoint(h.x,h.y),b=e&&e.closest('.btn,.rs');
+ if(h.hot&&h.hot!==b)h.hot.classList.remove('hot');h.hot=b;b&&b.classList.add('hot')}
+function press(h){const e=document.elementFromPoint(h.x,h.y);if(!e)return;
+ const b=e.closest('.btn');if(b){b.click();return}
+ h.drag=grab(e,h.x,h.y)}
+
+/* mover / redimensionar (mão ou toque) */
+function grab(e,x,y){const rs=e.closest('.rs'),bar=e.closest('.drag'),w=e.closest('.win');
+ if(!w||!(rs||bar))return null;w.style.zIndex=++z;const r=w.getBoundingClientRect();
+ return{w,m:rs?rs.dataset.m:'move',x,y,l:r.left,t:r.top,W:r.width,H:r.height}}
+function moveDrag(g,x,y){const dx=x-g.x,dy=y-g.y,s=g.w.style;
+ if(g.m==='move'){s.left=Math.min(innerWidth-80,Math.max(80-g.W,g.l+dx))+'px';s.top=Math.min(innerHeight-44,Math.max(0,g.t+dy))+'px'}
+ else{if(g.m.includes('w'))s.width=Math.max(240,g.W+dx)+'px';if(g.m.includes('h'))s.height=Math.max(180,g.H+dy)+'px'}}
+document.addEventListener('pointerdown',e=>{if(!e.target.closest('.btn'))pd=grab(e.target,e.clientX,e.clientY)});
+document.addEventListener('pointermove',e=>pd&&moveDrag(pd,e.clientX,e.clientY));
+['pointerup','pointercancel'].forEach(t=>document.addEventListener(t,()=>pd=null));
+
+/* duas mãos pinçando dentro da aba: afastar = aumentar, aproximar = diminuir */
+function twoHand(){const[a,b]=S;
+ if(a.p&&b.p&&!a.drag&&!b.drag&&A.style.display==='flex'){
+  const dist=d(a,b),mx=(a.x+b.x)/2,my=(a.y+b.y)/2;
+  if(!sc){const r=A.getBoundingClientRect();
+   if(mx>r.left&&mx<r.right&&my>r.top&&my<r.bottom)sc={d:dist,W:r.width,H:r.height,cx:r.left+r.width/2,cy:r.top+r.height/2}}
+  if(sc){const k=dist/sc.d,w=Math.min(innerWidth*.96,Math.max(240,sc.W*k)),h=Math.min(innerHeight*.96,Math.max(180,sc.H*k)),s=A.style;
+   s.width=w+'px';s.height=h+'px';s.left=sc.cx-w/2+'px';s.top=sc.cy-h/2+'px'}
+ }else sc=null}
+</script></body></html>
